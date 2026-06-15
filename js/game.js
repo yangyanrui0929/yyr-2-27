@@ -139,6 +139,8 @@ class UndergroundRadioGame {
         document.getElementById('doRepairBtn').addEventListener('click', () => this.doRepair());
         document.getElementById('suppressRumorBtn').addEventListener('click', () => this.suppressRumor());
 
+        document.getElementById('repairSurvivor').addEventListener('change', () => this.renderEquipment());
+
         ['power', 'noise', 'rumor', 'fatigue', 'morale'].forEach(stat => {
             const slider = document.getElementById(stat + 'ThresholdSlider');
             const valSpan = document.getElementById(stat + 'ThresholdVal');
@@ -158,6 +160,21 @@ class UndergroundRadioGame {
         
         document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
         document.getElementById(tabName).classList.add('active');
+
+        if (tabName === 'schedule') {
+            this.renderSchedule();
+        } else if (tabName === 'broadcast') {
+            this.renderBroadcasts();
+            if (this.gameState.selectedBroadcast) {
+                this.selectBroadcast(this.gameState.selectedBroadcast);
+            }
+        } else if (tabName === 'qa') {
+            this.renderQuestion();
+        } else if (tabName === 'repair') {
+            this.renderEquipment();
+        } else if (tabName === 'rumor') {
+            this.renderRumors();
+        }
 
         if (tabName === 'qa' && !this.gameState.currentQuestion) {
             this.generateQuestion();
@@ -226,11 +243,39 @@ class UndergroundRadioGame {
         container.innerHTML = '';
         repairSelect.innerHTML = '';
 
+        const avgFatigue = this.getSurvivorAvgFatigue();
+        const fatiguePenalty = this.getRepairFatiguePenalty();
+        const fatiguePct = Math.round((fatiguePenalty - 1) * 100);
+        const fatigueClass = fatiguePct >= 0 ? 'positive' : 'negative';
+
+        if (avgFatigue > 0) {
+            const hintDiv = document.createElement('div');
+            hintDiv.className = 'tab-hint-bar';
+            hintDiv.style.marginBottom = '10px';
+            hintDiv.style.fontSize = '11px';
+            hintDiv.innerHTML = `
+                <span class="hint-icon">🔗</span>
+                <div class="hint-content">
+                    幸存者疲劳会降低<strong>维修效率</strong>和<strong>谣言核查</strong>效果。
+                    <span class="modifier-badge ${fatigueClass}">效率 ${fatiguePct > 0 ? '+' : ''}${fatiguePct}%</span>
+                </div>
+            `;
+            container.appendChild(hintDiv);
+        }
+
         this.gameState.survivors.forEach(survivor => {
             const card = document.createElement('div');
             card.className = 'survivor-card';
             if (survivor.fatigue >= 70) card.classList.add('exhausted');
             else if (survivor.fatigue >= 40) card.classList.add('tired');
+
+            const repairPenalty = this.getRepairFatiguePenalty(survivor);
+            const repairPct = Math.round((repairPenalty - 1) * 100);
+            let fatigueHint = '';
+            if (repairPct !== 0) {
+                const hintClass = repairPct > 0 ? 'positive' : 'negative';
+                fatigueHint = `<div class="relation-detail"><div class="relation-item"><span class="relation-label">维修效率</span><span class="relation-value ${hintClass}">${repairPct > 0 ? '+' : ''}${repairPct}%</span></div></div>`;
+            }
 
             card.innerHTML = `
                 <div class="survivor-name">${survivor.name} <small style="color:#888">[${survivor.skill}]</small></div>
@@ -238,6 +283,7 @@ class UndergroundRadioGame {
                     <span>❤️ ${survivor.health}%</span>
                     <span>😴 ${survivor.fatigue}%</span>
                 </div>
+                ${fatigueHint}
                 ${survivor.task ? `<div class="survivor-task">${survivor.task}</div>` : ''}
             `;
             container.appendChild(card);
@@ -245,7 +291,7 @@ class UndergroundRadioGame {
             if (!survivor.task) {
                 const option = document.createElement('option');
                 option.value = survivor.id;
-                option.textContent = `${survivor.name} (${survivor.skill})`;
+                option.textContent = `${survivor.name} (${survivor.skill}) ${repairPct !== 0 ? `[维修${repairPct}%]` : ''}`;
                 repairSelect.appendChild(option);
             }
         });
@@ -254,6 +300,23 @@ class UndergroundRadioGame {
     renderDistrictTrust() {
         const container = document.getElementById('districtTrust');
         container.innerHTML = '';
+
+        const spreadMult = this.getBroadcastSpreadMultiplier();
+        const spreadPct = Math.round((spreadMult - 1) * 100);
+        const spreadClass = spreadPct >= 0 ? 'positive' : 'negative';
+
+        const hintDiv = document.createElement('div');
+        hintDiv.className = 'tab-hint-bar';
+        hintDiv.style.marginBottom = '10px';
+        hintDiv.style.fontSize = '11px';
+        hintDiv.innerHTML = `
+            <span class="hint-icon">🔗</span>
+            <div class="hint-content">
+                城区信任度影响<strong>广播扩散范围</strong>。信任越高，播报消息的传播效果越好。
+                <span class="modifier-badge ${spreadClass}">扩散 ${spreadPct > 0 ? '+' : ''}${spreadPct}%</span>
+            </div>
+        `;
+        container.appendChild(hintDiv);
 
         this.gameState.districts.forEach(district => {
             const item = document.createElement('div');
@@ -272,6 +335,30 @@ class UndergroundRadioGame {
     }
 
     renderSchedule() {
+        const schedulePane = document.getElementById('schedule');
+        let hintBar = schedulePane.querySelector('.tab-hint-bar');
+        if (!hintBar) {
+            hintBar = document.createElement('div');
+            hintBar.className = 'tab-hint-bar';
+            const h3 = schedulePane.querySelector('h3');
+            h3.after(hintBar);
+        }
+
+        const credBonus = this.getScheduleCredibilityBonus();
+        const credPct = Math.round((credBonus - 1) * 100);
+        const credClass = credPct >= 0 ? 'positive' : 'negative';
+        hintBar.innerHTML = `
+            <span class="hint-icon">🔗</span>
+            <div class="hint-content">
+                节目编排会影响<strong>广播消息可信度</strong>。新闻、访谈类节目提升可信度，音乐、故事类节目影响较小。
+                <span class="modifier-badge ${credClass}">可信度 ${credPct > 0 ? '+' : ''}${credPct}%</span>
+                <br>
+                <span class="hint-link" data-goto-tab="broadcast">→ 去播报消息看看</span>
+            </div>
+        `;
+
+        hintBar.querySelector('.hint-link').addEventListener('click', () => this.switchTab('broadcast'));
+
         ['morning', 'afternoon', 'evening'].forEach(slot => {
             const optionsContainer = document.getElementById(slot + 'Options');
             const slotDisplay = document.getElementById('slot' + slot.charAt(0).toUpperCase() + slot.slice(1));
@@ -288,10 +375,18 @@ class UndergroundRadioGame {
                 const effectsText = Object.entries(program.effects)
                     .map(([k, v]) => `${this.getStatName(k)} ${v > 0 ? '+' : ''}${v}`)
                     .join(', ');
+
+                let credHint = '';
+                if (program.id === 'news' || program.id === 'education' || program.id === 'interview' || program.id === 'emergency') {
+                    credHint = '<div class="relation-detail"><div class="relation-item"><span class="relation-label">可信度加成</span><span class="relation-value">高</span></div></div>';
+                } else if (program.id === 'weather') {
+                    credHint = '<div class="relation-detail"><div class="relation-item"><span class="relation-label">可信度加成</span><span class="relation-value">中</span></div></div>';
+                }
                 
                 btn.innerHTML = `
                     <div>${program.name}</div>
                     <div class="program-effects">${effectsText} | ⚡${program.power}</div>
+                    ${credHint}
                 `;
                 
                 btn.addEventListener('click', () => this.selectProgram(slot, program.id));
@@ -309,6 +404,39 @@ class UndergroundRadioGame {
     }
 
     renderBroadcasts() {
+        const broadcastPane = document.getElementById('broadcast');
+        let hintBar = broadcastPane.querySelector('.tab-hint-bar');
+        if (!hintBar) {
+            hintBar = document.createElement('div');
+            hintBar.className = 'tab-hint-bar';
+            const h3 = broadcastPane.querySelector('h3');
+            h3.after(hintBar);
+        }
+
+        const credBonus = this.getScheduleCredibilityBonus();
+        const spreadMult = this.getBroadcastSpreadMultiplier();
+        const credPct = Math.round((credBonus - 1) * 100);
+        const spreadPct = Math.round((spreadMult - 1) * 100);
+        const credClass = credPct >= 0 ? 'positive' : 'negative';
+        const spreadClass = spreadPct >= 0 ? 'positive' : 'negative';
+
+        hintBar.innerHTML = `
+            <span class="hint-icon">🔗</span>
+            <div class="hint-content">
+                本页受两处关联影响：<br>
+                1. <span class="hint-link" data-goto-tab="schedule">节目编排</span> 决定
+                <span class="modifier-badge ${credClass}">可信度 ${credPct > 0 ? '+' : ''}${credPct}%</span><br>
+                2. <span class="hint-link" data-goto-district="true">城区信任度</span> 决定
+                <span class="modifier-badge ${spreadClass}">扩散 ${spreadPct > 0 ? '+' : ''}${spreadPct}%</span>
+            </div>
+        `;
+
+        hintBar.querySelectorAll('.hint-link').forEach(link => {
+            if (link.dataset.gotoTab) {
+                link.addEventListener('click', () => this.switchTab(link.dataset.gotoTab));
+            }
+        });
+
         const container = document.getElementById('broadcastList');
         container.innerHTML = '';
 
@@ -318,10 +446,24 @@ class UndergroundRadioGame {
             if (this.gameState.selectedBroadcast === msg.id) {
                 item.classList.add('selected');
             }
+
+            const adjustedTrust = msg.effects.trust ? Math.round(msg.effects.trust * credBonus * spreadMult) : 0;
+            const adjustedMorale = msg.effects.morale ? Math.round(msg.effects.morale * credBonus * spreadMult) : 0;
+            const trustDiff = adjustedTrust - (msg.effects.trust || 0);
+            const moraleDiff = adjustedMorale - (msg.effects.morale || 0);
+
+            let bonusHint = '';
+            if (trustDiff !== 0 || moraleDiff !== 0) {
+                bonusHint = `<div class="relation-detail">
+                    <div class="relation-item"><span class="relation-label">关联加成后</span>
+                    <span class="relation-value">${trustDiff > 0 ? '+' : ''}${trustDiff} 信任 / ${moraleDiff > 0 ? '+' : ''}${moraleDiff} 民心</span></div>
+                </div>`;
+            }
             
             item.innerHTML = `
                 <div class="broadcast-title">${msg.title}</div>
                 <div class="broadcast-desc">${msg.content}</div>
+                ${bonusHint}
             `;
             
             item.addEventListener('click', () => this.selectBroadcast(msg.id));
@@ -333,6 +475,66 @@ class UndergroundRadioGame {
     }
 
     renderEquipment() {
+        const repairPane = document.getElementById('repair');
+        let hintBar = repairPane.querySelector('.tab-hint-bar');
+        if (!hintBar) {
+            hintBar = document.createElement('div');
+            hintBar.className = 'tab-hint-bar';
+            const h3 = repairPane.querySelector('h3');
+            h3.after(hintBar);
+        }
+
+        const signalQuality = this.getEquipmentSignalQuality();
+        const signalPct = Math.round((signalQuality - 1) * 100);
+        const signalClass = signalPct >= 0 ? 'positive' : 'negative';
+
+        hintBar.innerHTML = `
+            <span class="hint-icon">🔗</span>
+            <div class="hint-content">
+                设备状态影响<strong>听众问答的信号质量</strong>。设备越好，问答的正面效果越强、负面效果越弱。
+                <span class="modifier-badge ${signalClass}">信号质量 ${signalPct > 0 ? '+' : ''}${signalPct}%</span>
+                <br>
+                <span class="hint-link" data-goto-tab="qa">→ 去听众问答看看</span>
+            </div>
+        `;
+
+        hintBar.querySelector('.hint-link').addEventListener('click', () => this.switchTab('qa'));
+
+        const repairActions = repairPane.querySelector('.repair-actions');
+        let fatigueHint = repairActions.querySelector('.fatigue-hint-box');
+        if (!fatigueHint) {
+            fatigueHint = document.createElement('div');
+            fatigueHint.className = 'fatigue-hint-box relation-detail';
+            fatigueHint.style.marginTop = '10px';
+            fatigueHint.style.padding = '8px';
+            fatigueHint.style.background = 'rgba(243, 156, 18, 0.08)';
+            fatigueHint.style.borderRadius = '6px';
+            fatigueHint.style.border = '1px solid rgba(243, 156, 18, 0.3)';
+            const h4 = repairActions.querySelector('h4');
+            h4.after(fatigueHint);
+        }
+
+        const selectedSurvivorId = document.getElementById('repairSurvivor').value;
+        let currentFatiguePenalty = 1;
+        let fatigueLabel = '幸存者平均疲劳';
+        if (selectedSurvivorId) {
+            const survivor = this.gameState.survivors.find(s => s.id === selectedSurvivorId);
+            if (survivor) {
+                currentFatiguePenalty = this.getRepairFatiguePenalty(survivor);
+                fatigueLabel = `${survivor.name} 疲劳影响`;
+            }
+        } else {
+            currentFatiguePenalty = this.getRepairFatiguePenalty();
+        }
+        const fatiguePct = Math.round((currentFatiguePenalty - 1) * 100);
+        const fatigueClass = fatiguePct >= 0 ? 'positive' : 'negative';
+        fatigueHint.innerHTML = `
+            <div class="relation-item">
+                <span class="relation-label">🔗 ${fatigueLabel}</span>
+                <span class="relation-value ${fatigueClass}" style="font-weight:bold">维修效率 ${fatiguePct > 0 ? '+' : ''}${fatiguePct}%</span>
+            </div>
+        `;
+
         const container = document.getElementById('equipmentList');
         const select = document.getElementById('repairEquipment');
         
@@ -375,6 +577,29 @@ class UndergroundRadioGame {
     }
 
     renderRumors() {
+        const rumorPane = document.getElementById('rumor');
+        let hintBar = rumorPane.querySelector('.tab-hint-bar');
+        if (!hintBar) {
+            hintBar = document.createElement('div');
+            hintBar.className = 'tab-hint-bar';
+            const h3 = rumorPane.querySelector('h3');
+            h3.after(hintBar);
+        }
+
+        const fatiguePenalty = this.getRumorSuppressFatiguePenalty();
+        const fatiguePct = Math.round((fatiguePenalty - 1) * 100);
+        const fatigueClass = fatiguePct >= 0 ? 'positive' : 'negative';
+
+        hintBar.innerHTML = `
+            <span class="hint-icon">🔗</span>
+            <div class="hint-content">
+                谣言压制效果受<strong>幸存者平均疲劳</strong>影响。幸存者越疲惫，澄清谣言的效率越低。
+                <span class="modifier-badge ${fatigueClass}">效率 ${fatiguePct > 0 ? '+' : ''}${fatiguePct}%</span>
+                <br>
+                <span class="hint-link" data-goto-survivors="true">→ 查看幸存者状态</span>
+            </div>
+        `;
+
         const container = document.getElementById('rumorList');
         const select = document.getElementById('rumorToSuppress');
         
@@ -389,6 +614,10 @@ class UndergroundRadioGame {
         this.gameState.rumors.forEach(rumor => {
             const item = document.createElement('div');
             item.className = 'rumor-item';
+            
+            const baseReduction = Math.round(40 * fatiguePenalty);
+            const baseRumorRed = Math.round(15 * fatiguePenalty);
+            
             item.innerHTML = `
                 <div class="rumor-title">${rumor.title}</div>
                 <div class="rumor-desc">${rumor.desc}</div>
@@ -398,6 +627,12 @@ class UndergroundRadioGame {
                         <div class="rumor-severity-fill" style="width:${rumor.severity}%"></div>
                     </div>
                     <span>${rumor.severity}%</span>
+                </div>
+                <div class="relation-detail">
+                    <div class="relation-item">
+                        <span class="relation-label">澄清后预计减少</span>
+                        <span class="relation-value">-${baseReduction}% / -${baseRumorRed} 谣言值</span>
+                    </div>
                 </div>
             `;
             container.appendChild(item);
@@ -447,6 +682,31 @@ class UndergroundRadioGame {
     }
 
     renderQuestion() {
+        const qaPane = document.getElementById('qa');
+        let hintBar = qaPane.querySelector('.tab-hint-bar');
+        if (!hintBar) {
+            hintBar = document.createElement('div');
+            hintBar.className = 'tab-hint-bar';
+            const h3 = qaPane.querySelector('h3');
+            h3.after(hintBar);
+        }
+
+        const signalQuality = this.getEquipmentSignalQuality();
+        const signalPct = Math.round((signalQuality - 1) * 100);
+        const signalClass = signalPct >= 0 ? 'positive' : 'negative';
+
+        hintBar.innerHTML = `
+            <span class="hint-icon">🔗</span>
+            <div class="hint-content">
+                问答效果受<strong>设备信号质量</strong>影响。设备越好，正确回答的收益越大，错误回答的损失越小。
+                <span class="modifier-badge ${signalClass}">信号质量 ${signalPct > 0 ? '+' : ''}${signalPct}%</span>
+                <br>
+                <span class="hint-link" data-goto-tab="repair">→ 去设备维修看看</span>
+            </div>
+        `;
+
+        hintBar.querySelector('.hint-link').addEventListener('click', () => this.switchTab('repair'));
+
         const question = this.gameState.currentQuestion;
         const questionText = document.getElementById('questionText');
         const optionsContainer = document.getElementById('answerOptions');
@@ -462,7 +722,25 @@ class UndergroundRadioGame {
             question.options.forEach((option, index) => {
                 const btn = document.createElement('button');
                 btn.className = 'option-btn';
-                btn.textContent = option.text;
+                
+                const effectsText = Object.entries(option.effects)
+                    .filter(([_, v]) => v !== 0)
+                    .map(([k, v]) => {
+                        let adjustedV = v;
+                        if (k === 'trust' || k === 'morale') {
+                            adjustedV = v > 0 ? Math.round(v * signalQuality) : Math.round(v / signalQuality);
+                        } else if (k === 'rumor') {
+                            adjustedV = v > 0 ? Math.round(v / signalQuality) : Math.round(v * signalQuality);
+                        }
+                        const diff = adjustedV - v;
+                        return `${this.getStatName(k)} ${v > 0 ? '+' : ''}${v}${diff !== 0 ? ` (实际 ${adjustedV > 0 ? '+' : ''}${adjustedV})` : ''}`;
+                    })
+                    .join(', ');
+
+                btn.innerHTML = `
+                    <div>${option.text}</div>
+                    <div class="program-effects" style="font-size:10px; color:#888; margin-top:4px">${effectsText}</div>
+                `;
                 btn.addEventListener('click', () => this.answerQuestion(index));
                 optionsContainer.appendChild(btn);
             });
@@ -492,6 +770,83 @@ class UndergroundRadioGame {
         return names[stat] || stat;
     }
 
+    getScheduleCredibilityBonus() {
+        let credibilityScore = 0;
+        let programCount = 0;
+
+        ['morning', 'afternoon', 'evening'].forEach(slot => {
+            const programId = this.gameState.schedule[slot];
+            if (programId) {
+                programCount++;
+                const program = GameData.programTypes.find(p => p.id === programId);
+                if (program) {
+                    if (programId === 'news' || programId === 'education') {
+                        credibilityScore += 15;
+                    } else if (programId === 'interview' || programId === 'emergency') {
+                        credibilityScore += 20;
+                    } else if (programId === 'weather') {
+                        credibilityScore += 8;
+                    } else if (programId === 'music' || programId === 'story') {
+                        credibilityScore += 3;
+                    } else if (programId === 'silent') {
+                        credibilityScore -= 5;
+                    }
+                }
+            }
+        });
+
+        if (programCount === 0) return 0;
+        const bonus = 1 + (credibilityScore / 100);
+        return Math.max(0.7, Math.min(1.4, bonus));
+    }
+
+    getEquipmentSignalQuality() {
+        let totalCondition = 0;
+        let count = 0;
+
+        this.gameState.equipment.forEach(eq => {
+            totalCondition += eq.condition;
+            count++;
+        });
+
+        if (count === 0) return 1;
+        const avgCondition = totalCondition / count;
+        const quality = 0.6 + (avgCondition / 100) * 0.6;
+        return Math.max(0.5, Math.min(1.3, quality));
+    }
+
+    getSurvivorAvgFatigue() {
+        if (this.gameState.survivors.length === 0) return 0;
+        const total = this.gameState.survivors.reduce((sum, s) => sum + s.fatigue, 0);
+        return total / this.gameState.survivors.length;
+    }
+
+    getDistrictAvgTrust() {
+        if (this.gameState.districts.length === 0) return 50;
+        const total = this.gameState.districts.reduce((sum, d) => sum + d.trust, 0);
+        return total / this.gameState.districts.length;
+    }
+
+    getBroadcastSpreadMultiplier() {
+        const avgTrust = this.getDistrictAvgTrust();
+        const multiplier = 0.6 + (avgTrust / 100) * 0.7;
+        return Math.max(0.5, Math.min(1.4, multiplier));
+    }
+
+    getRepairFatiguePenalty(survivor) {
+        const fatigue = survivor ? survivor.fatigue : this.getSurvivorAvgFatigue();
+        if (fatigue >= 70) return 0.5;
+        if (fatigue >= 40) return 0.8;
+        return 1;
+    }
+
+    getRumorSuppressFatiguePenalty() {
+        const avgFatigue = this.getSurvivorAvgFatigue();
+        if (avgFatigue >= 70) return 0.6;
+        if (avgFatigue >= 40) return 0.85;
+        return 1;
+    }
+
     selectProgram(slot, programId) {
         this.gameState.schedule[slot] = programId;
         this.renderSchedule();
@@ -503,14 +858,44 @@ class UndergroundRadioGame {
         const msg = GameData.broadcastMessages.find(m => m.id === broadcastId);
         const preview = document.getElementById('broadcastPreview');
         
-        const effectsText = Object.entries(msg.effects)
+        const credibilityBonus = this.getScheduleCredibilityBonus();
+        const spreadMultiplier = this.getBroadcastSpreadMultiplier();
+        const combinedMultiplier = credibilityBonus * spreadMultiplier;
+
+        const adjustedEffects = {};
+        Object.entries(msg.effects).forEach(([k, v]) => {
+            if (k === 'trust' || k === 'morale') {
+                adjustedEffects[k] = Math.round(v * combinedMultiplier);
+            } else if (k === 'rumor') {
+                adjustedEffects[k] = v > 0 ? Math.round(v / spreadMultiplier) : Math.round(v * credibilityBonus);
+            } else {
+                adjustedEffects[k] = v;
+            }
+        });
+
+        const effectsText = Object.entries(adjustedEffects)
             .map(([k, v]) => `${this.getStatName(k)} ${v > 0 ? '+' : ''}${v}`)
             .join(' | ');
+
+        const credPct = Math.round((credibilityBonus - 1) * 100);
+        const spreadPct = Math.round((spreadMultiplier - 1) * 100);
         
         preview.innerHTML = `
             <h4 style="color:#e94560; margin-bottom:10px">${msg.title}</h4>
             <p>${msg.content}</p>
-            <p style="color:#888; font-size:12px; margin-top:10px">效果: ${effectsText} | 耗电: ⚡${msg.power}</p>
+            <p style="color:#888; font-size:12px; margin-top:10px">
+                效果: ${effectsText} | 耗电: ⚡${msg.power}
+            </p>
+            <div class="relation-detail" style="margin-top:10px">
+                <div class="relation-item">
+                    <span class="relation-label">🔗 节目编排可信度</span>
+                    <span class="relation-value">${credPct > 0 ? '+' : ''}${credPct}%</span>
+                </div>
+                <div class="relation-item">
+                    <span class="relation-label">🔗 城区信任扩散</span>
+                    <span class="relation-value">${spreadPct > 0 ? '+' : ''}${spreadPct}%</span>
+                </div>
+            </div>
         `;
         
         this.renderBroadcasts();
@@ -525,16 +910,36 @@ class UndergroundRadioGame {
             return;
         }
 
-        this.applyEffects(msg.effects);
+        const credibilityBonus = this.getScheduleCredibilityBonus();
+        const spreadMultiplier = this.getBroadcastSpreadMultiplier();
+        const combinedMultiplier = credibilityBonus * spreadMultiplier;
+
+        const adjustedEffects = {};
+        Object.entries(msg.effects).forEach(([k, v]) => {
+            if (k === 'trust' || k === 'morale') {
+                adjustedEffects[k] = Math.round(v * combinedMultiplier);
+            } else if (k === 'rumor') {
+                adjustedEffects[k] = v > 0 ? Math.round(v / spreadMultiplier) : Math.round(v * credibilityBonus);
+            } else {
+                adjustedEffects[k] = v;
+            }
+        });
+
+        this.applyEffects(adjustedEffects);
         this.gameState.status.power -= msg.power;
         this.gameState.todayActions.broadcastDone = true;
 
-        const effectTags = Object.entries(msg.effects)
+        const effectTags = Object.entries(adjustedEffects)
             .filter(([_, v]) => v !== 0)
             .map(([k, v]) => ({
                 text: `${this.getStatName(k)} ${v > 0 ? '+' : ''}${v}`,
                 type: v > 0 ? 'positive' : 'negative'
             }));
+
+        const credPct = Math.round((credibilityBonus - 1) * 100);
+        const spreadPct = Math.round((spreadMultiplier - 1) * 100);
+        effectTags.push({ text: `📰 可信度 ${credPct > 0 ? '+' : ''}${credPct}%`, type: credPct >= 0 ? 'positive' : 'negative' });
+        effectTags.push({ text: `📡 扩散 ${spreadPct > 0 ? '+' : ''}${spreadPct}%`, type: spreadPct >= 0 ? 'positive' : 'negative' });
 
         this.showEvent('播报完成', `已播报：${msg.title}`, effectTags);
         this.renderAll();
@@ -562,7 +967,20 @@ class UndergroundRadioGame {
         if (!question) return;
 
         const option = question.options[optionIndex];
-        this.applyEffects(option.effects);
+        const signalQuality = this.getEquipmentSignalQuality();
+
+        const adjustedEffects = {};
+        Object.entries(option.effects).forEach(([k, v]) => {
+            if (k === 'trust' || k === 'morale') {
+                adjustedEffects[k] = v > 0 ? Math.round(v * signalQuality) : Math.round(v / signalQuality);
+            } else if (k === 'rumor') {
+                adjustedEffects[k] = v > 0 ? Math.round(v / signalQuality) : Math.round(v * signalQuality);
+            } else {
+                adjustedEffects[k] = v;
+            }
+        });
+
+        this.applyEffects(adjustedEffects);
         this.gameState.todayActions.qaDone++;
 
         this.gameState.answeredQuestions.push({
@@ -572,12 +990,15 @@ class UndergroundRadioGame {
             day: this.gameState.day
         });
 
-        const effectTags = Object.entries(option.effects)
+        const effectTags = Object.entries(adjustedEffects)
             .filter(([_, v]) => v !== 0)
             .map(([k, v]) => ({
                 text: `${this.getStatName(k)} ${v > 0 ? '+' : ''}${v}`,
                 type: v > 0 ? 'positive' : 'negative'
             }));
+
+        const signalPct = Math.round((signalQuality - 1) * 100);
+        effectTags.push({ text: `📶 信号质量 ${signalPct > 0 ? '+' : ''}${signalPct}%`, type: signalPct >= 0 ? 'positive' : 'negative' });
 
         const title = option.correct ? '回答正确！' : '回答不佳...';
         this.showEvent(title, option.text, effectTags);
@@ -605,7 +1026,9 @@ class UndergroundRadioGame {
         this.gameState.resources.parts -= equipment.repairCost;
         
         const repairBonus = survivor.skill === '维修' ? 15 : 0;
-        const repairAmount = 25 + repairBonus;
+        const fatiguePenalty = this.getRepairFatiguePenalty(survivor);
+        const baseRepair = 25 + repairBonus;
+        const repairAmount = Math.round(baseRepair * fatiguePenalty);
         equipment.condition = Math.min(100, equipment.condition + repairAmount);
         
         survivor.fatigue += 20;
@@ -613,10 +1036,17 @@ class UndergroundRadioGame {
         
         this.gameState.todayActions.repairDone.push(eqId);
 
-        this.showEvent('维修完成', `${survivor.name} 完成了 ${equipment.name} 的维修工作！`, [
+        const effectTags = [
             { text: `🔧 ${equipment.name} +${repairAmount}%`, type: 'positive' },
             { text: `😴 ${survivor.name} 疲劳 +20`, type: 'negative' }
-        ]);
+        ];
+
+        const fatiguePct = Math.round((fatiguePenalty - 1) * 100);
+        if (fatiguePct !== 0) {
+            effectTags.push({ text: `💪 疲劳影响 ${fatiguePct > 0 ? '+' : ''}${fatiguePct}%`, type: fatiguePct > 0 ? 'positive' : 'negative' });
+        }
+
+        this.showEvent('维修完成', `${survivor.name} 完成了 ${equipment.name} 的维修工作！`, effectTags);
 
         this.renderAll();
     }
@@ -633,16 +1063,27 @@ class UndergroundRadioGame {
             return;
         }
 
+        const fatiguePenalty = this.getRumorSuppressFatiguePenalty();
+        const baseSeverityReduction = 40;
+        const baseRumorReduction = 15;
+        const severityReduction = Math.round(baseSeverityReduction * fatiguePenalty);
+        const rumorReduction = Math.round(baseRumorReduction * fatiguePenalty);
+
         this.gameState.status.power -= 8;
-        rumor.severity -= 40;
-        this.gameState.status.rumor -= 15;
+        rumor.severity -= severityReduction;
+        this.gameState.status.rumor -= rumorReduction;
         this.gameState.status.fatigue += 10;
         this.gameState.todayActions.rumorSuppressDone.push(rumorId);
 
         let effectTags = [
-            { text: `🗣️ 谣言 -40%`, type: 'positive' },
+            { text: `🗣️ 谣言 -${severityReduction}%`, type: 'positive' },
             { text: `😴 疲劳 +10`, type: 'negative' }
         ];
+
+        const fatiguePct = Math.round((fatiguePenalty - 1) * 100);
+        if (fatiguePct !== 0) {
+            effectTags.push({ text: `💪 疲劳影响 ${fatiguePct > 0 ? '+' : ''}${fatiguePct}%`, type: fatiguePct > 0 ? 'positive' : 'negative' });
+        }
 
         if (rumor.severity <= 0) {
             this.gameState.rumors = this.gameState.rumors.filter(r => r.id !== rumorId);

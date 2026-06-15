@@ -848,6 +848,123 @@ body {
     }
 }
 
+.relation-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    background: rgba(243, 156, 18, 0.15);
+    border: 1px solid rgba(243, 156, 18, 0.4);
+    border-radius: 12px;
+    font-size: 11px;
+    color: #f39c12;
+    margin-left: 8px;
+    vertical-align: middle;
+    cursor: help;
+    transition: all 0.2s;
+}
+
+.relation-hint:hover {
+    background: rgba(243, 156, 18, 0.3);
+    border-color: #f39c12;
+}
+
+.relation-hint .hint-icon {
+    font-size: 12px;
+}
+
+.relation-hint .hint-text {
+    font-weight: 500;
+}
+
+.tab-hint-bar {
+    background: rgba(243, 156, 18, 0.08);
+    border: 1px solid rgba(243, 156, 18, 0.3);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 15px;
+    font-size: 12px;
+    color: #f39c12;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.tab-hint-bar .hint-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.tab-hint-bar .hint-content {
+    flex: 1;
+    line-height: 1.5;
+}
+
+.tab-hint-bar .hint-content strong {
+    color: #f1c40f;
+}
+
+.tab-hint-bar .hint-link {
+    color: #3498db;
+    cursor: pointer;
+    text-decoration: underline;
+    font-weight: 500;
+}
+
+.tab-hint-bar .hint-link:hover {
+    color: #5dade2;
+}
+
+.modifier-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: bold;
+    margin-left: 6px;
+}
+
+.modifier-badge.positive {
+    background: rgba(46, 204, 113, 0.2);
+    color: #2ecc71;
+}
+
+.modifier-badge.negative {
+    background: rgba(231, 76, 60, 0.2);
+    color: #e74c3c;
+}
+
+.modifier-badge.neutral {
+    background: rgba(243, 156, 18, 0.2);
+    color: #f39c12;
+}
+
+.relation-detail {
+    font-size: 11px;
+    color: #888;
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.relation-detail .relation-item {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 2px;
+}
+
+.relation-detail .relation-item .relation-label {
+    color: #aaa;
+}
+
+.relation-detail .relation-item .relation-value {
+    color: #f39c12;
+    font-weight: bold;
+}
+
 @media (max-width: 992px) {
     .main-content {
         grid-template-columns: 1fr;
